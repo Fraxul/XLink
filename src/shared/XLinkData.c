@@ -118,6 +118,28 @@ XLinkError_t XLinkCloseStream(streamId_t const streamId)
     return X_LINK_SUCCESS;
 }
 
+XLinkError_t XLinkAllocateDMABuffer(streamId_t const streamId, uint32_t requestedSize, uint8_t** outBuffer, uint32_t* outBufferSize)
+{
+    XLINK_RET_ERR_IF(outBuffer == NULL, X_LINK_ERROR);
+    XLINK_RET_ERR_IF(outBufferSize == NULL, X_LINK_ERROR);
+
+    xLinkDesc_t* link = NULL;
+    XLINK_RET_IF(getLinkByStreamId(streamId, &link));
+    XLINK_RET_ERR_IF(XLinkPlatformAllocateDMABuffer(&link->deviceHandle, requestedSize, (void**) outBuffer, outBufferSize) != X_LINK_PLATFORM_SUCCESS, X_LINK_ERROR);
+    return X_LINK_SUCCESS;
+}
+
+XLinkError_t XLinkDeallocateDMABuffer(streamId_t const streamId, uint8_t* buffer, uint32_t bufferSize)
+{
+    XLINK_RET_ERR_IF(buffer == NULL, X_LINK_ERROR);
+    XLINK_RET_ERR_IF(bufferSize == 0, X_LINK_ERROR);
+
+    xLinkDesc_t* link = NULL;
+    XLINK_RET_IF(getLinkByStreamId(streamId, &link));
+    XLINK_RET_ERR_IF(XLinkPlatformDeallocateDMABuffer(&link->deviceHandle, buffer, bufferSize) != X_LINK_PLATFORM_SUCCESS, X_LINK_ERROR);
+    return X_LINK_SUCCESS;
+}
+
 XLinkError_t XLinkWriteData(streamId_t const streamId, const uint8_t* buffer,
                             int size)
 {

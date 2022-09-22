@@ -49,6 +49,9 @@ int usbPlatformBootFirmware(const deviceDesc_t* deviceDesc, const char* firmware
 int usbPlatformRead(void *fd, void *data, int size);
 int usbPlatformWrite(void *fd, void *data, int size);
 
+int usbPlatformAllocateDMABuffer(void *fd, uint32_t requestedSize, void** outBuffer, uint32_t* outSize);
+int usbPlatformDeallocateDMABuffer(void *fd, void* buffer, uint32_t size);
+
 #ifdef __cplusplus
 }
 #endif

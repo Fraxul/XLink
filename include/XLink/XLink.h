@@ -211,6 +211,10 @@ streamId_t XLinkOpenStream(linkId_t id, const char* name, int stream_write_size)
  */
 XLinkError_t XLinkCloseStream(streamId_t const streamId);
 
+
+XLinkError_t XLinkAllocateDMABuffer(streamId_t const streamId, uint32_t requestedSize, uint8_t** outBuffer, uint32_t* outBufferSize);
+XLinkError_t XLinkDeallocateDMABuffer(streamId_t const streamId, uint8_t* buffer, uint32_t bufferSize);
+
 /**
  * @brief Sends a package to initiate the writing of data to a remote stream
  * @warning Actual size of the written data is ALIGN_UP(size, 64)

@@ -8,8 +8,10 @@
 #include <assert.h>
 #include <string.h>
 
+#include "XLinkMacros.h"
 #include "XLinkPlatform.h"
 #include "XLinkPlatformErrorUtils.h"
+#include "XLinkPrivateDefines.h"
 #include "XLinkStringUtils.h"
 #include "usb_host.h"
 #include "pcie_host.h"
@@ -118,6 +120,43 @@ int XLinkPlatformRead(xLinkDeviceHandle_t *deviceHandle, void *data, int size)
 
         default:
             return X_LINK_PLATFORM_INVALID_PARAMETERS;
+    }
+}
+
+#define DMA_BUFFER_DEFAULT_ALIGNMENT 256
+
+int XLinkPlatformAllocateDMABuffer(xLinkDeviceHandle_t *deviceHandle, uint32_t requestedSize, void** outBuffer, uint32_t* outBufferSize)
+{
+    if(!XLinkIsProtocolInitialized(deviceHandle->protocol)) {
+        return X_LINK_PLATFORM_DRIVER_NOT_LOADED+deviceHandle->protocol;
+    }
+
+    switch (deviceHandle->protocol) {
+        case X_LINK_USB_VSC:
+        case X_LINK_USB_CDC:
+            return usbPlatformAllocateDMABuffer(deviceHandle->xLinkFD, requestedSize, outBuffer, outBufferSize);
+
+        default:
+            *outBufferSize = ROUND_UP(requestedSize, DMA_BUFFER_DEFAULT_ALIGNMENT);
+            *outBuffer = XLinkPlatformAllocateData(*outBufferSize, DMA_BUFFER_DEFAULT_ALIGNMENT);
+            return X_LINK_PLATFORM_SUCCESS;
+    }
+}
+
+int XLinkPlatformDeallocateDMABuffer(xLinkDeviceHandle_t *deviceHandle, void* buffer, uint32_t bufferSize)
+{
+    if(!XLinkIsProtocolInitialized(deviceHandle->protocol)) {
+        return X_LINK_PLATFORM_DRIVER_NOT_LOADED+deviceHandle->protocol;
+    }
+
+    switch (deviceHandle->protocol) {
+        case X_LINK_USB_VSC:
+        case X_LINK_USB_CDC:
+            return usbPlatformDeallocateDMABuffer(deviceHandle->xLinkFD, buffer, bufferSize);
+
+        default:
+            XLinkPlatformDeallocateData(buffer, bufferSize, DMA_BUFFER_DEFAULT_ALIGNMENT);
+            return X_LINK_PLATFORM_SUCCESS;
     }
 }
 

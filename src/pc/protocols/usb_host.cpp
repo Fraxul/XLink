@@ -9,6 +9,7 @@
 #endif
 
 #include "XLink/XLinkLog.h"
+#include "XLink/XLinkMacros.h"
 #include "XLink/XLinkPlatform.h"
 #include "XLink/XLinkPublicDefines.h"
 #include "usb_mx_id.h"
@@ -24,6 +25,8 @@
 #include <chrono>
 #include <cstring>
 #include <cassert>
+#include <atomic>
+#include <unistd.h> // getpagesize
 
 constexpr static int MAXIMUM_PORT_NUMBERS = 7;
 using VidPid = std::pair<uint16_t, uint16_t>;
@@ -1174,3 +1177,44 @@ std::string getWinUsbMxId(VidPid vidpid, libusb_device* dev) {
     return deviceId;
 }
 #endif
+
+static std::atomic_uint_fast32_t totalDMABufferAllocs = {0};
+
+int usbPlatformAllocateDMABuffer(void *fdKey, uint32_t requestedSize, void** outBuffer, uint32_t* outSize)
+{
+    void* tmpUsbHandle = NULL;
+    if(getPlatformDeviceFdFromKey(fdKey, &tmpUsbHandle)){
+        mvLog(MVLOG_FATAL, "Cannot find file descriptor by key: %" PRIxPTR, (uintptr_t) fdKey);
+        return -1;
+    }
+    libusb_device_handle* usbHandle = (libusb_device_handle*) tmpUsbHandle;
+
+    *outSize = ROUND_UP(requestedSize, getpagesize());
+    *outBuffer = libusb_dev_mem_alloc(usbHandle, *outSize);
+    if (*outBuffer == NULL) {
+        mvLog(MVLOG_FATAL, "libusb_dev_mem_alloc(%p, %u) failed. current DMA buffer allocation total: %u bytes. You may need to increase /sys/module/usbcore/parameters/usbfs_memory_mb", usbHandle, *outSize, totalDMABufferAllocs.load());
+        return -1;
+    }
+
+    totalDMABufferAllocs.fetch_add(*outSize);
+
+    return 0;
+}
+
+int usbPlatformDeallocateDMABuffer(void *fdKey, void* buffer, uint32_t size) {
+    void* tmpUsbHandle = NULL;
+    if(getPlatformDeviceFdFromKey(fdKey, &tmpUsbHandle)){
+        mvLog(MVLOG_FATAL, "Cannot find file descriptor by key: %" PRIxPTR, (uintptr_t) fdKey);
+        return -1;
+    }
+    libusb_device_handle* usbHandle = (libusb_device_handle*) tmpUsbHandle;
+
+    int rc =  libusb_dev_mem_free(usbHandle, (unsigned char*) buffer, size);
+    if (rc != 0) {
+        mvLog(MVLOG_FATAL, "libusb_dev_mem_free(%p, %p, %u) failed: %s (%d). current DMA buffer allocation total: %u bytes", usbHandle, buffer, size, libusb_error_name(rc), rc, totalDMABufferAllocs.load());
+    }
+
+    totalDMABufferAllocs.fetch_sub(size);
+    return rc;
+}
+
