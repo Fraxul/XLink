@@ -23,6 +23,7 @@
 #include <thread>
 #include <chrono>
 #include <cstring>
+#include <cassert>
 
 constexpr static int MAXIMUM_PORT_NUMBERS = 7;
 using VidPid = std::pair<uint16_t, uint16_t>;
@@ -62,7 +63,33 @@ static UsbSetupPacket bootBootloaderPacket{
 
 
 static std::mutex mutex;
-static libusb_context* context;
+static libusb_context* nextContext = nullptr;
+
+static int usbEnsureNextContextAvailable() {
+    if (nextContext)
+        return 0;
+
+    // // Debug
+    // mvLogLevelSet(MVLOG_DEBUG);
+
+    #if defined(_WIN32) && defined(_MSC_VER)
+        return usbInitialize_customdir((void**)&nextContext);
+    #endif
+    return libusb_init(&nextContext);
+}
+
+static libusb_context* usbGetNextContext() {
+    usbEnsureNextContextAvailable();
+    assert(nextContext != nullptr);
+    //fprintf(stderr, "usbGetNextContext() = %p\n", nextContext);
+    return nextContext;
+}
+
+static void usbDidTakeContext(libusb_context* ctx) {
+    //fprintf(stderr, "usbDidTakeContext(%p)\n", ctx);
+    assert(nextContext == ctx);
+    nextContext = nullptr;
+}
 
 int usbInitialize(void* options){
     #ifdef __ANDROID__
@@ -71,14 +98,7 @@ int usbInitialize(void* options){
             libusb_set_option(NULL, libusb_option::LIBUSB_OPTION_ANDROID_JAVAVM, options);
         }
     #endif
-
-    // // Debug
-    // mvLogLevelSet(MVLOG_DEBUG);
-
-    #if defined(_WIN32) && defined(_MSC_VER)
-        return usbInitialize_customdir((void**)&context);
-    #endif
-    return libusb_init(&context);
+    return usbEnsureNextContextAvailable();
 }
 
 struct pair_hash {
@@ -111,7 +131,8 @@ extern "C" xLinkPlatformErrorCode_t getUSBDevices(const deviceDesc_t in_deviceRe
 
     // Get list of usb devices
     static libusb_device **devs = NULL;
-    auto numDevices = libusb_get_device_list(context, &devs);
+    libusb_context* usbContext = usbGetNextContext();
+    auto numDevices = libusb_get_device_list(usbContext, &devs);
     if(numDevices < 0) {
         mvLog(MVLOG_DEBUG, "Unable to get USB device list: %s", xlink_libusb_strerror(numDevices));
         return X_LINK_PLATFORM_ERROR;
@@ -224,7 +245,8 @@ extern "C" xLinkPlatformErrorCode_t refLibusbDeviceByName(const char* name, libu
 
     // Get list of usb devices
     static libusb_device **devs = NULL;
-    auto numDevices = libusb_get_device_list(context, &devs);
+    libusb_context* ctx = usbGetNextContext();
+    auto numDevices = libusb_get_device_list(ctx, &devs);
     if(numDevices < 0) {
         mvLog(MVLOG_DEBUG, "Unable to get USB device list: %s", xlink_libusb_strerror(numDevices));
         return X_LINK_PLATFORM_ERROR;
@@ -255,6 +277,9 @@ extern "C" xLinkPlatformErrorCode_t refLibusbDeviceByName(const char* name, libu
         return X_LINK_PLATFORM_DEVICE_NOT_FOUND;
     }
 
+    // Take the libusb context since we're going to assign it permanently to this device.
+    // Subsequent device openings will generate new contexts.
+    usbDidTakeContext(ctx);
     return X_LINK_PLATFORM_SUCCESS;
 }
 
